@@ -25,9 +25,27 @@ struct job {
 struct job *head = NULL;
 
 
-void append_to(struct job **head_pointer, int arrival, int length, int tickets){
-
+void append_to(struct job **head_pointer, int arrival, int length, int tickets) {
     // TODO: create a new job and init it with proper data
+    struct job* new_job = (struct job*) malloc(sizeof(struct job));
+    new_job->arrival = arrival;
+    new_job->length = length;
+    new_job->tickets = tickets;
+    new_job->id = numofjobs++;
+    new_job->next = NULL;
+
+    if(*head_pointer == NULL){
+        *head_pointer = new_job;
+        return;
+    }else{
+        struct  job * curr = *head_pointer;
+        while(curr->next != NULL){
+            curr = curr->next;
+        }
+        curr->next = new_job;
+    }
+
+
     return;
 }
 
@@ -50,6 +68,20 @@ void read_job_config(const char* filename)
         exit(EXIT_FAILURE);
 
     // TODO: if the file is empty, we should just exit with error
+    if (fp == NULL) {
+        perror("Failed to open file");
+        exit(EXIT_FAILURE);
+    }
+
+    fseek(fp, 0, SEEK_END);
+    size_t size = ftell(fp);
+
+    if(0 == size){
+        //file is empty, exit
+        exit(EXIT_FAILURE);
+    }
+    rewind(fp);
+
     while ((read = getline(&line, &len, fp)) != -1)
     {
         if( line[read-1] == '\n' )
@@ -122,8 +154,23 @@ void policy_FIFO(){
     printf("Execution trace with FIFO:\n");
 
     // TODO: implement FIFO policy
+    struct job * curr = head;
+    int currentTime = 0;
+    while(curr != NULL){
+        printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, curr->length);
+
+        currentTime += curr->length;
+        curr = curr->next;
+    }
 
     printf("End of execution with FIFO.\n");
+
+    // traverse linked list and free all dynamic items
+    while(head != NULL){
+        struct job * temp = head;
+        head = head->next;
+        free(temp);
+    }
 }
 
 
