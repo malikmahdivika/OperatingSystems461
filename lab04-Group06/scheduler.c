@@ -17,6 +17,9 @@ struct job {
     int arrival; // arrival time; safely assume the time unit has the minimal increment of 1
     int length;
     int tickets; // number of tickets for lottery scheduling
+    int time_waited;
+    int turnaround_time;
+    int response_time;  // each job stores metadata about their individual metrics
     // TODO: add any other metadata you need to track here
     struct job *next;
 };
@@ -157,20 +160,20 @@ void policy_FIFO(){
     struct job * curr = head;
     int currentTime = 0;
     while(curr != NULL){
+        if (currentTime < curr->arrival) {  // if there is a time gap, jump to execution time.
+            currentTime = curr->arrival;
+        }
         printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, curr->length);
+        curr->response_time = currentTime - curr->arrival;
+        curr->time_waited = curr->response_time;    //non-preemptive, wait time = response time.
 
-        currentTime += curr->length;
+        currentTime += curr->length;    // job runs to completion.
+        curr->turnaround_time = currentTime - curr->arrival;
+
         curr = curr->next;
     }
 
     printf("End of execution with FIFO.\n");
-
-    // traverse linked list and free all dynamic items
-    while(head != NULL){
-        struct job * temp = head;
-        head = head->next;
-        free(temp);
-    }
 }
 
 
@@ -209,6 +212,25 @@ int main(int argc, char **argv){
         policy_FIFO();
         if (analysis == 1){
             // TODO: perform analysis
+            int tot_resp = 0;
+            int tot_turn = 0;
+            int tot_wait = 0;   // variables for average metric
+
+            struct job * curr = head;
+            // traverse linked list and acquire metrics
+            printf("Begin analyzing FIFO:\n");
+            while (curr != NULL) {
+                printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n", curr->id, curr->response_time,
+                        curr->turnaround_time, curr->time_waited);
+                tot_resp += curr->response_time;
+                tot_turn += curr->turnaround_time;
+                tot_wait += curr->time_waited;
+
+                curr = curr->next;
+            }
+
+            printf("Average -- Response: %.2lf  Turnaround %.2lf  Wait %.2lf\n",  tot_resp/(double)numofjobs, tot_turn/(double)numofjobs, tot_wait/(double)numofjobs);
+            printf("End analyzing FIFO.\n");
         }
     }
     else if (strcmp(pname, "SJF") == 0)
@@ -226,6 +248,13 @@ int main(int argc, char **argv){
     else if (strcmp(pname, "LT") == 0)
     {
         // TODO
+    }
+
+    // traverse linked list and free all dynamic items
+    while(head != NULL){
+        struct job * temp = head;
+        head = head->next;
+        free(temp);
     }
 
 	exit(0);
