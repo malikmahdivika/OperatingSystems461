@@ -125,8 +125,41 @@ void policy_STCF()
 void policy_RR(int slice)
 {
     printf("Execution trace with RR:\n");
-
     // TODO: implement RR policy
+    int currentTime = 0;
+    struct job *curr = head;
+    int numOfFinishedJobs = 0;
+
+    while (numOfFinishedJobs < numofjobs) {
+        if (curr != NULL && currentTime < curr->arrival) {  // if there is a time gap, jump to execution time.
+            currentTime = curr->arrival;
+        } else if (curr == NULL) {
+            // move back to top of list
+            curr = head;
+            continue;
+        }
+
+        if (curr->length == 0) {
+            curr = curr->next;
+            continue;
+        } else if (curr->length - slice <= 0) {
+            // job will complete after this run
+            printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, curr->length);
+            numOfFinishedJobs++;
+            currentTime += curr->length;
+            curr->length = 0;
+            curr = curr->next;
+            continue;
+        } else {
+            // normal operation, job won't complete after this round.
+            curr->length -= slice;
+            printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, slice);
+            currentTime += slice;
+            curr = curr->next;
+            continue;
+        }
+        
+    }
 
     printf("End of execution with RR.\n");
 }
@@ -244,6 +277,10 @@ int main(int argc, char **argv){
     else if (strcmp(pname, "RR") == 0)
     {
         // TODO
+        policy_RR(slice);
+        if (analysis == 1) {
+            // TODO: Analysis
+        }
     }
     else if (strcmp(pname, "LT") == 0)
     {
