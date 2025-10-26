@@ -17,11 +17,14 @@ struct job {
     int arrival; // arrival time; safely assume the time unit has the minimal increment of 1
     int length;
     int tickets; // number of tickets for lottery scheduling
+    struct job *next;
+
+    // TODO: add any other metadata you need to track here
     int time_waited;
     int turnaround_time;
+    int last_executed_time;
     int response_time;  // each job stores metadata about their individual metrics
-    // TODO: add any other metadata you need to track here
-    struct job *next;
+    int responded_to;
 };
 
 // the workload list
@@ -36,13 +39,16 @@ void append_to(struct job **head_pointer, int arrival, int length, int tickets) 
     new_job->tickets = tickets;
     new_job->id = numofjobs++;
     new_job->next = NULL;
+    new_job->responded_to = 0;      // set "responded to" metadata to "false" (no bool datatype?)
+    new_job->time_waited = 0;       // initialize time_waited with 0 value.
+    new_job->last_executed_time = 0;    // job last executed on
 
     if(*head_pointer == NULL){
         *head_pointer = new_job;
         return;
     }else{
         struct  job * curr = *head_pointer;
-        while(curr->next != NULL){
+        while(curr->next != NULL) {
             curr = curr->next;
         }
         curr->next = new_job;
@@ -128,37 +134,57 @@ void policy_RR(int slice)
     // TODO: implement RR policy
     int currentTime = 0;
     struct job *curr = head;
-    int numOfFinishedJobs = 0;
+    int numOfFinishedJobs = 0;    
 
     while (numOfFinishedJobs < numofjobs) {
-        if (curr != NULL && currentTime < curr->arrival) {  // if there is a time gap, jump to execution time.
-            currentTime = curr->arrival;
-        } else if (curr == NULL) {
+        // these blocks maintain overall execution sanity
+        if (curr == NULL) {
             // move back to top of list
             curr = head;
             continue;
         }
+        if (currentTime < curr->arrival) {  // if there is a time gap, jump to execution time.
+            currentTime = curr->arrival;
+        }   
 
-        if (curr->length == 0) {
+        // these blocks are responsible for job-specific execution
+        if (curr->length == 0) {    // job has completed already, run other jobs
             curr = curr->next;
             continue;
         } else if (curr->length - slice <= 0) {
             // job will complete after this run
             printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, curr->length);
             numOfFinishedJobs++;
+
+            // append time waited with time between current time and time of last execution.
+            curr->time_waited += currentTime - curr->last_executed_time;
             currentTime += curr->length;
+            curr->turnaround_time = currentTime - curr->arrival;
+            curr->last_executed_time = currentTime + curr->length;  // job last ran at this time
             curr->length = 0;
+            
             curr = curr->next;
             continue;
-        } else {
-            // normal operation, job won't complete after this round.
-            curr->length -= slice;
+        } else {    // normal operation, job won't complete after this round.
+            if (curr->responded_to == 0) {   //first time execution, set response time metadata
+                curr->responded_to = 1;
+                curr->response_time = currentTime - curr->arrival;
+                curr->last_executed_time = currentTime + slice;  // job hasn't run to have a previous execution time yet (wait = response)
+                curr->time_waited = curr->response_time;         // wait includes time before first response
+            } else if (curr->responded_to == 1) {
+                curr->time_waited += currentTime - curr->last_executed_time;
+                curr->last_executed_time = slice + currentTime;  // job will stop execution here
+            }
+            // if (curr->responded_to == 1) {curr->last_executed_time = currentTime + curr->length;}  // job last ran at this time
             printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, slice);
+
+            curr->length -= slice;
             currentTime += slice;
+            
             curr = curr->next;
             continue;
         }
-        
+        curr =  curr->next;
     }
 
     printf("End of execution with RR.\n");
@@ -276,10 +302,27 @@ int main(int argc, char **argv){
     }
     else if (strcmp(pname, "RR") == 0)
     {
-        // TODO
         policy_RR(slice);
         if (analysis == 1) {
-            // TODO: Analysis
+            // TODO: perform analysis
+            int tot_resp = 0;
+            int tot_turn = 0;
+            int tot_wait = 0;   // variables for average metric
+
+            struct job * curr = head;
+            printf("Begin analyzing RR:\n");
+
+            while (curr != NULL) {
+                printf("Job %d -- Response time: %d  Turnaround: %d  Wait: %d\n", 
+                    curr->id, curr->response_time, curr->turnaround_time, curr->time_waited);
+                tot_resp += curr->response_time;
+                tot_turn += curr->turnaround_time;
+                tot_wait += curr->time_waited;
+                curr = curr->next;
+            }
+
+            printf("Average -- Response: %.2lf  Turnaround %.2lf  Wait %.2lf\n",  tot_resp/(double)numofjobs, tot_turn/(double)numofjobs, tot_wait/(double)numofjobs);
+            printf("End analyzing RR.\n");
         }
     }
     else if (strcmp(pname, "LT") == 0)
