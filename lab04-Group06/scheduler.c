@@ -138,26 +138,65 @@ void policy_RR(int slice)
 
     while (numOfFinishedJobs < numofjobs) {
         // these blocks maintain overall execution sanity
-        if (curr == NULL) {
+        
+        if (curr == NULL) { // check if at end of list
             // move back to top of list
             curr = head;
             continue;
         }
-        if (currentTime < curr->arrival) {  // if there is a time gap, jump to execution time.
-            currentTime = curr->arrival;
-        }   
-
-        // these blocks are responsible for job-specific execution
-        if (curr->length == 0) {    // job has completed already, run other jobs
+        
+        if (curr->length == 0) {  // job has completed already, run other jobs
             curr = curr->next;
             continue;
-        } else if (curr->length - slice <= 0) {
+        }
+
+        // check if there are jobs which can currently run
+        if (currentTime < curr->arrival) {
+            struct job *ready_check = head;
+            int anyReady = 0;
+            while (ready_check != NULL) {
+                // there is a ready job (that curr is not on)
+                if (ready_check->arrival <= currentTime && ready_check->length > 0) {
+                    anyReady = 1;
+                    break;
+                }
+                ready_check = ready_check->next;
+            }
+        
+            // if none are ready, jump execution time to next arrival
+            if (!anyReady) {
+                struct job *temp = head;
+                int nextArr = 0;
+                while (temp != NULL) {
+                    if (temp->length > 0 && temp->arrival > currentTime) {
+                        if (nextArr == 0 || temp->arrival < nextArr) {
+                            nextArr = temp->arrival;
+                        }
+                    }
+                    temp = temp->next;
+                }
+                // ff to next arrival
+                if (nextArr != 0) currentTime = nextArr;
+            }
+            curr = head;    //restart loop
+            continue;
+        }
+
+        // these blocks are responsible for job-specific execution
+        if (curr->length - slice <= 0) {
+            if (curr->responded_to == 0) {   //first time execution, set response time metadata
+                curr->responded_to = 1;
+                curr->response_time = currentTime - curr->arrival;
+                curr->time_waited = curr->response_time;         // wait includes time before first response
+            } else if (curr->responded_to == 1) {
+                // append time waited with time between current time and time of last execution.
+                curr->time_waited += currentTime - curr->last_executed_time;
+            }
+            
             // job will complete after this run
             printf("t=%d: [Job %d] arrived at [%d], ran for: [%d]\n", currentTime, curr->id, curr->arrival, curr->length);
             numOfFinishedJobs++;
 
-            // append time waited with time between current time and time of last execution.
-            curr->time_waited += currentTime - curr->last_executed_time;
             currentTime += curr->length;
             curr->turnaround_time = currentTime - curr->arrival;
             curr->last_executed_time = currentTime + curr->length;  // job last ran at this time
@@ -171,7 +210,7 @@ void policy_RR(int slice)
                 curr->response_time = currentTime - curr->arrival;
                 curr->last_executed_time = currentTime + slice;  // job hasn't run to have a previous execution time yet (wait = response)
                 curr->time_waited = curr->response_time;         // wait includes time before first response
-            } else if (curr->responded_to == 1) {
+            } else if (curr->responded_to == 1 && curr->length > 0) {
                 curr->time_waited += currentTime - curr->last_executed_time;
                 curr->last_executed_time = slice + currentTime;  // job will stop execution here
             }
