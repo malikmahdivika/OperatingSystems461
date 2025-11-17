@@ -382,6 +382,46 @@ int main(int argc, char* argv[]) {
             goto NEXT;
         }
 
+        // ============ PART 4: READ FROM MEMORY ============
+        if (strcmp(tokens[0], "rinspect") == 0) {
+            int r = regIndex(tokens[1]);
+            int val = regs[currPID][r];
+
+            fprintf(output_file,
+                    "Current PID: %d. Inspected register %s. Content: %d\n",
+                    currPID, tokens[1], val);
+
+            goto NEXT;
+        }
+        if (strcmp(tokens[0], "pinspect") == 0) {
+            int vpn = atoi(tokens[1]);
+
+            int pfn;
+            if (!translateVPN(vpn, &pfn, FALSE)) {
+                fprintf(output_file,
+                        "Current PID: %d. Inspected page table entry %d. Physical frame number: 0. Valid: %d\n",
+                        currPID, vpn, totalProcesses[currPID][vpn].valid);
+                goto NEXT;
+            }
+
+            fprintf(output_file,
+                    "Current PID: %d. Inspected page table entry %d. Physical frame number: %d. Valid: %d\n",
+                    currPID, vpn, pfn, totalProcesses[currPID][vpn].valid);
+
+            goto NEXT;
+        }
+        if (strcmp(tokens[0], "linspect") == 0) {
+            int phys_addr = atoi(tokens[1]);
+            int val = phys_memory[phys_addr];
+
+            fprintf(output_file,
+                    "Current PID: %d. Inspected physical location %d. Value: %d\n",
+                    currPID, phys_addr, val);
+            goto NEXT;
+        }
+        
+        
+
 NEXT:
         for (int i = 0; tokens[i] != NULL; i++)
             free(tokens[i]);
