@@ -89,6 +89,10 @@ int translateVPN(int vpn, int *p_pfn, int print) {
         if (LookasideBuffer[i].valid &&
             LookasideBuffer[i].pid == currPID &&
             LookasideBuffer[i].vpn == vpn) {
+            // TLB hit
+            if (strcmp(strategy, "LRU") == 0) {
+                LookasideBuffer[i].timestamp = global_time;  // update timestamp and global var timer for LRU
+            }
 
             if (print)
                 fprintf(output_file,
@@ -117,14 +121,28 @@ int translateVPN(int vpn, int *p_pfn, int print) {
 
     int pfn = totalProcesses[currPID][vpn].pfn;
 
-    // Insert into TLB under FIFO
-    int entry = tlbNext;
-    tlbNext = (tlbNext + 1) % 8;
+    // Check for TLB replacement strategy then insert into TLB
+    int entry;
+
+    if (strcmp(strategy, "LRU") == 0) {
+        // Find the least recently used entry
+        int oldest = 0;
+        for (int i = 1; i < 8; i++) {
+            if (LookasideBuffer[i].timestamp < LookasideBuffer[oldest].timestamp)
+                oldest = i;
+        }
+        entry = oldest;
+    } else if(strcmp(strategy, "FIFO") == 0) {
+        // Use next entry in a circular manner
+        entry = tlbNext;
+        tlbNext = (tlbNext + 1) % 8;
+    }
 
     LookasideBuffer[entry].valid = TRUE;
     LookasideBuffer[entry].pid = currPID;
     LookasideBuffer[entry].vpn = vpn;
     LookasideBuffer[entry].pfn = pfn;
+    LookasideBuffer[entry].timestamp = global_time;  // update timestamp and global var timer
 
     if (print)
         fprintf(output_file,
@@ -275,6 +293,19 @@ int main(int argc, char* argv[]) {
         }
         // ============ PART 3: MAP ===============
         if (strcmp(tokens[0], "map") == 0) {
+            int entry;
+            if (strcmp(strategy, "FIFO") == 0) {
+                entry = tlbNext;
+                tlbNext = (tlbNext + 1) % 8;
+            } else if (strcmp(strategy, "LRU") == 0) {
+                // Find the least recently used entry
+                int oldest = 0;
+                for (int i = 1; i < 8; i++) {
+                    if (LookasideBuffer[i].timestamp < LookasideBuffer[oldest].timestamp)
+                        oldest = i;
+                }
+                entry = oldest;
+            }
 
             int vpn = atoi(tokens[1]);
             int pfn = atoi(tokens[2]);
@@ -285,14 +316,12 @@ int main(int argc, char* argv[]) {
             fprintf(output_file,
                 "Current PID: %d. Mapped virtual page number %d to physical frame number %d\n",
                 currPID, vpn, pfn);
-
-            
-            LookasideBuffer[tlbNext].valid = TRUE;
-            LookasideBuffer[tlbNext].pid = currPID;
-            LookasideBuffer[tlbNext].vpn = vpn;
-            LookasideBuffer[tlbNext].pfn = pfn;
-            LookasideBuffer[tlbNext].timestamp = global_time;     // update timestamp and global var timer
-            tlbNext = (tlbNext + 1) % 8;
+                
+            LookasideBuffer[entry].valid = TRUE;
+            LookasideBuffer[entry].pid = currPID;
+            LookasideBuffer[entry].vpn = vpn;
+            LookasideBuffer[entry].pfn = pfn;
+            LookasideBuffer[entry].timestamp = global_time;     // update timestamp and global var timer
 
             goto NEXT;
         }
