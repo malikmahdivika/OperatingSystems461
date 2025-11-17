@@ -14,12 +14,14 @@
 
 int define_called = FALSE;
 int *phys_memory;
+int global_time = 0;
 
 typedef struct {
     int valid;
     int vpn;
     int pfn;
     int pid;
+    int timestamp;
 }TLB;
 
 typedef struct{
@@ -165,7 +167,7 @@ int main(int argc, char* argv[]) {
         char** tokens = tokenize_input(buffer);
 
         // TODO: Implement your memory simulator
-        //printf("Memory instantiation complete.");
+        
 
         //check for comments
         if(tokens[0][0] == '%'){
@@ -176,6 +178,7 @@ int main(int argc, char* argv[]) {
             free(tokens);
             continue;
         }
+        global_time++;  // increment global time at each instruction excluding comments
 
         if(define_called && 0 == strcmp(tokens[0], "ctxswitch")){
             
@@ -283,11 +286,12 @@ int main(int argc, char* argv[]) {
                 "Current PID: %d. Mapped virtual page number %d to physical frame number %d\n",
                 currPID, vpn, pfn);
 
-            // ** FIX: immediately update TLB **
+            
             LookasideBuffer[tlbNext].valid = TRUE;
             LookasideBuffer[tlbNext].pid = currPID;
             LookasideBuffer[tlbNext].vpn = vpn;
             LookasideBuffer[tlbNext].pfn = pfn;
+            LookasideBuffer[tlbNext].timestamp = global_time;     // update timestamp and global var timer
             tlbNext = (tlbNext + 1) % 8;
 
             goto NEXT;
@@ -416,6 +420,16 @@ int main(int argc, char* argv[]) {
                     "Current PID: %d. Inspected physical location %d. Value: %d\n",
                     currPID, phys_addr, val);
             goto NEXT;
+        }
+        if (strcmp(tokens[0], "tinspect") == 0) {
+            fprintf(output_file, "Current PID: %d. Inspected TLB entry %d. ", currPID, atoi(tokens[1]));
+            fprintf(output_file, "VPN: %d. PFN: %d. Valid: %d. PID: %d. Timestamp: %d\n",
+                    LookasideBuffer[atoi(tokens[1])].vpn,
+                    LookasideBuffer[atoi(tokens[1])].pfn,
+                    LookasideBuffer[atoi(tokens[1])].valid,
+                    LookasideBuffer[atoi(tokens[1])].pid,
+                    LookasideBuffer[atoi(tokens[1])].timestamp
+            );
         }
         
         
