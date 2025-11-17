@@ -232,9 +232,7 @@ int main(int argc, char* argv[]) {
 
             // }
             fprintf(output_file,"Current PID: %d. ", currPID);
-            // printf("Memory instantiation complete. OFF bits: %s. PFN bits: %s. VPN bits: %s\n",
-            //         tokens[1], tokens[2], tokens[2]);
-            fprintf(output_file,"Memory instantiation complete. OFF bits: %s. PFN bits: %s. VPN bits: %s\n",tokens[1], tokens[2], tokens[2]);   
+            fprintf(output_file,"Memory instantiation complete. OFF bits: %s. PFN bits: %s. VPN bits: %s\n",tokens[1], tokens[2], tokens[3]);   
             goto NEXT;         
         }
         //============PART 2 — load instruction============
