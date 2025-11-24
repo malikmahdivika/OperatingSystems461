@@ -15,6 +15,7 @@ FILE *out;
 typedef struct {
     char *cmd;
     long long val;
+    int seq;        // global sequence
 } Operation;
 
 // Threads arguments and lock
@@ -25,9 +26,15 @@ typedef struct {
     int op_count;
 } ThreadArgs;
 
+// We must keep log entries in order regardless of thread completion order
+typedef struct {
+    char *line;
+} LogEntry;
+
 long long contexts[MAX_CONTEXTS] = {0};
 Operation ops[MAX_CONTEXTS][MAX_OPS];
 int op_count[MAX_CONTEXTS] = {0};
+LogEntry *logs = NULL;      // global array to store log entries
 
 // format string lines into heap for batch printing
 // Note that main is responsible for formatting this; returns heap pointer/NULL.
@@ -137,13 +144,16 @@ void *context_thread(void *arg) {
             int n = snprintf(p, buffersize, "ctx %02d: primes (result:", ctx);
             p += n;
             for (int i = 0; i < count; i++) {
-                n = snprintf(p, buffersize - (p - line_buffer), " %d", arr[i]);
+                n = snprintf(p, buffersize - (p - line_buffer), " %d,", arr[i]);
                 p += n;
             }
-            snprintf(p, buffersize - (p - line_buffer), ")\n");
+            p[strlen(p) - 1] = ')'; //replace last comma with closing bracket
+            snprintf(p, buffersize - (p - line_buffer), "\n");
 
             log_batch[batch_count++] = line_buffer;     // store for batch logging
             free(arr);
+            // We have to skip alloc_log to avoid double incrementing batch_count
+            continue;                                   
         }
 
         // now allocate copy on heap for logging
@@ -156,6 +166,7 @@ void *context_thread(void *arg) {
                 free(log_batch[i]);
             }
             pthread_mutex_unlock(&log_lock);
+            batch_count = 0;
         }
 
         free(op->cmd); // free strduped command
@@ -169,6 +180,7 @@ void *context_thread(void *arg) {
                 free(log_batch[i]);
             }
         pthread_mutex_unlock(&log_lock);
+        batch_count = 0;
     }
     return NULL;
 }
