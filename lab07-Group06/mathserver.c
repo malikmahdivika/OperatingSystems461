@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-#include <stdarg.h>
 
 #define MAX_CONTEXTS 16
 #define MAX_OPS 1024
@@ -26,15 +25,9 @@ typedef struct {
     int op_count;
 } ThreadArgs;
 
-// We must keep log entries in order regardless of thread completion order
-typedef struct {
-    char *line;
-} LogEntry;
-
 long long contexts[MAX_CONTEXTS] = {0};
 Operation ops[MAX_CONTEXTS][MAX_OPS];
 int op_count[MAX_CONTEXTS] = {0};
-LogEntry *logs = NULL;      // global array to store log entries
 
 // format string lines into heap for batch printing
 // Note that main is responsible for formatting this; returns heap pointer/NULL.
