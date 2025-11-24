@@ -143,7 +143,10 @@ int main(int argc, char *argv[]) {
                 fprintf(out, "ctx %02d: pia (result %.15f)\n", ctx, r);
             }
             else if (strcmp(cmd, "pri") == 0) {
-                int limit = (contexts[ctx] > 1000000 ? 1000000 : contexts[ctx]);
+                //int limit = (contexts[ctx] > 1000000 ? 1000000 : contexts[ctx]);
+                // trying with no limit set, just use the context value
+                
+                int limit = (int)contexts[ctx];
                 int *arr = malloc(sizeof(int) * (limit/2 + 5));
                 int count = prime_list(arr, limit);
 
