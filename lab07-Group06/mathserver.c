@@ -120,19 +120,29 @@ void *context_thread(void *arg) {
             snprintf(line, sizeof(line), "ctx %02d: pia (result %.15f)\n", ctx, r);
         }
         else if (strcmp(op->cmd, "pri") == 0) {
-            // Do not set a limit here; the limit is simply the context value
+            /* Do not set a hard limit here; the limit is simply the context value
+             * However, we can't use line or else we run into stack smashing problems. Thus
+             * we have to set a dynamic buffer to adjust to the (ridiculously) large primes stack.
+            */
             int limit = (int)contexts[ctx];
             int *arr = malloc(sizeof(int) * (limit/2 + 5));
             int count = prime_list(arr, limit);
 
-            char *p = line;
-            int n = snprintf(p, sizeof(line), "ctx %02d: primes (result:", ctx);
+            // estimate needed size; 10chars/number + extra
+            size_t buffersize = 50 + count * 12;
+            char *line_buffer = malloc(buffersize);
+            if (!line_buffer) exit(1);
+
+            char *p = line_buffer;
+            int n = snprintf(p, buffersize, "ctx %02d: primes (result:", ctx);
             p += n;
             for (int i = 0; i < count; i++) {
-                n = snprintf(p, sizeof(line) - (p - line), " %d", arr[i]);
+                n = snprintf(p, buffersize - (p - line_buffer), " %d", arr[i]);
                 p += n;
             }
-            snprintf(p, sizeof(line) - (p - line), ")\n");
+            snprintf(p, buffersize - (p - line_buffer), ")\n");
+
+            log_batch[batch_count++] = line_buffer;     // store for batch logging
             free(arr);
         }
 
