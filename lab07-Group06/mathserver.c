@@ -2,9 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdarg.h>
 
 #define MAX_CONTEXTS 16
 #define MAX_OPS 1024
+#define LOG_BATCH_SIZE 10
+
 
 FILE *in;
 FILE *out;
@@ -15,82 +18,27 @@ typedef struct {
 } Operation;
 
 // Threads arguments and lock
-pthread_mutex_t log_lock;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     int ctx;
     Operation ops[MAX_OPS];
     int op_count;
 } ThreadArgs;
 
-// Per context thread function
-void *context_thread(void *arg) {
-    ThreadArgs *args = (ThreadArgs *)arg;
-    int ctx = args->ctx;
-    Operation *ops = args->ops;
-    int n_ops = args->op_count;
-
-
-
-    // ---------- Execute per context ----------
-    for (int ctx = 0; ctx < MAX_CONTEXTS; ctx++) {
-        for (int i = 0; i < op_count[ctx]; i++) {
-            char *cmd = ops[ctx][i].cmd;
-            long long val = ops[ctx][i].val;
-
-            if (strcmp(cmd, "set") == 0) {
-                contexts[ctx] = val;
-                fprintf(out, "ctx %02d: set to value %lld\n", ctx, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "add") == 0) {
-                contexts[ctx] += val;
-                fprintf(out, "ctx %02d: add %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "sub") == 0) {
-                contexts[ctx] -= val;
-                fprintf(out, "ctx %02d: sub %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "mul") == 0) {
-                contexts[ctx] *= val;
-                fprintf(out, "ctx %02d: mul %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "div") == 0 && val != 0) {
-                contexts[ctx] /= val;
-                fprintf(out, "ctx %02d: div %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "fib") == 0) {
-                long long r = fib(contexts[ctx]);
-                fprintf(out, "ctx %02d: fib (result: %lld)\n", ctx, r);
-            }
-            else if (strcmp(cmd, "pia") == 0) {
-                double r = pia((int)contexts[ctx]);
-                fprintf(out, "ctx %02d: pia (result %.15f)\n", ctx, r);
-            }
-            else if (strcmp(cmd, "pri") == 0) {
-                //int limit = (contexts[ctx] > 1000000 ? 1000000 : contexts[ctx]);
-                // trying with no limit set, just use the context value
-                int limit = (int)contexts[ctx];
-                int *arr = malloc(sizeof(int) * (limit/2 + 5));
-                int count = prime_list(arr, limit);
-
-                fprintf(out, "ctx %02d: primes (result:", ctx);
-                for (int j = 0; j < count; j++) {
-                    if (j == 0) fprintf(out, " %d", arr[j]);
-                    else fprintf(out, ", %d", arr[j]);
-                }
-                fprintf(out, ")\n");
-                free(arr);
-            }
-
-            free(cmd); // free strdup
-        }
-    }
-}
-
 long long contexts[MAX_CONTEXTS] = {0};
 Operation ops[MAX_CONTEXTS][MAX_OPS];
 int op_count[MAX_CONTEXTS] = {0};
 
+// format string lines into heap for batch printing
+// Note that main is responsible for formatting this; returns heap pointer/NULL.
+static char *alloc_log(const char *line) {
+    size_t len = strlen(line);
+    char *buffer = malloc(len + 1);
+    if (!buffer) return NULL;
+    memcpy(buffer, line, len + 1);
 
+    return buffer;
+}
 
 // ---------- Fibonacci ----------
 long long fib(long long n) {
@@ -131,6 +79,90 @@ double pia(int n) {
     return 4.0 * sum;
 }
 
+// Per context thread function
+void *context_thread(void *arg) {
+    ThreadArgs *args = (ThreadArgs *)arg;
+    int ctx = args->ctx;
+    char *log_batch[LOG_BATCH_SIZE];
+    int batch_count = 0;
+
+    // per thread context execution
+    for (int i = 0; i < args->op_count; i++) {
+        char line[512];
+        Operation *op = &args->ops[i];
+
+        if (strcmp(op->cmd, "set") == 0) {
+            contexts[ctx] = op->val;
+            snprintf(line, sizeof(line), "ctx %02d: set to value %lld\n", ctx, contexts[ctx]);
+        }
+        else if (strcmp(op->cmd, "add") == 0) {
+            contexts[ctx] += op->val;
+            snprintf(line, sizeof(line), "ctx %02d: add %lld (result: %lld)\n", ctx, op->val, contexts[ctx]);
+        }
+        else if (strcmp(op->cmd, "sub") == 0) {
+            contexts[ctx] -= op->val;
+            snprintf(line, sizeof(line), "ctx %02d: sub %lld (result: %lld)\n", ctx, op->val, contexts[ctx]);
+        }
+        else if (strcmp(op->cmd, "mul") == 0) {
+            contexts[ctx] *= op->val;
+            snprintf(line, sizeof(line), "ctx %02d: mul %lld (result: %lld)\n", ctx, op->val, contexts[ctx]);
+        }
+        else if (strcmp(op->cmd, "div") == 0 && op->val != 0) {
+            contexts[ctx] /= op->val;
+            snprintf(line, sizeof(line), "ctx %02d: div %lld (result: %lld)\n", ctx, op->val, contexts[ctx]);
+        }
+        else if (strcmp(op->cmd, "fib") == 0) {
+            long long r = fib((long long)contexts[ctx]);
+            snprintf(line, sizeof(line), "ctx %02d: fib (result: %lld)\n", ctx, r);
+        }
+        else if (strcmp(op->cmd, "pia") == 0) {
+            double r = pia((int)contexts[ctx]);
+            snprintf(line, sizeof(line), "ctx %02d: pia (result %.15f)\n", ctx, r);
+        }
+        else if (strcmp(op->cmd, "pri") == 0) {
+            // Do not set a limit here; the limit is simply the context value
+            int limit = (int)contexts[ctx];
+            int *arr = malloc(sizeof(int) * (limit/2 + 5));
+            int count = prime_list(arr, limit);
+
+            char *p = line;
+            int n = snprintf(p, sizeof(line), "ctx %02d: primes (result:", ctx);
+            p += n;
+            for (int i = 0; i < count; i++) {
+                n = snprintf(p, sizeof(line) - (p - line), " %d", arr[i]);
+                p += n;
+            }
+            snprintf(p, sizeof(line) - (p - line), ")\n");
+            free(arr);
+        }
+
+        // now allocate copy on heap for logging
+        log_batch[batch_count++] = alloc_log(line);
+        if (batch_count == LOG_BATCH_SIZE) {
+            // utilize pthread lock; it's a critical section after all.
+            pthread_mutex_lock(&log_lock);
+            for (int i = 0; i < batch_count; i++) {
+                fputs(log_batch[i], out);
+                free(log_batch[i]);
+            }
+            pthread_mutex_unlock(&log_lock);
+        }
+
+        free(op->cmd); // free strduped command
+    }
+
+    // flush any remaining entries
+    if (batch_count > 0) {
+        pthread_mutex_lock(&log_lock);
+            for (int i = 0; i < batch_count; i++) {
+                fputs(log_batch[i], out);
+                free(log_batch[i]);
+            }
+        pthread_mutex_unlock(&log_lock);
+    }
+    return NULL;
+}
+
 // ---------- Tokenizer ----------
 char **tokenize(char *str) {
     char **toks = NULL;
@@ -159,8 +191,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    FILE *in = fopen(argv[1], "r");
-    FILE *out = fopen(argv[2], "w");
+    in = fopen(argv[1], "r");
+    out = fopen(argv[2], "w");
     if (!in || !out) {
         printf("File error\n");
         return 1;
@@ -204,5 +236,6 @@ int main(int argc, char *argv[]) {
 
     fclose(in);
     fclose(out);
+    pthread_mutex_destroy(&log_lock);
     return 0;
 }
