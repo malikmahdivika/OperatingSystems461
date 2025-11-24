@@ -1,18 +1,96 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 
 #define MAX_CONTEXTS 16
 #define MAX_OPS 1024
+
+FILE *in;
+FILE *out;
 
 typedef struct {
     char *cmd;
     long long val;
 } Operation;
 
+// Threads arguments and lock
+pthread_mutex_t log_lock;
+typedef struct {
+    int ctx;
+    Operation ops[MAX_OPS];
+    int op_count;
+} ThreadArgs;
+
+// Per context thread function
+void *context_thread(void *arg) {
+    ThreadArgs *args = (ThreadArgs *)arg;
+    int ctx = args->ctx;
+    Operation *ops = args->ops;
+    int n_ops = args->op_count;
+
+
+
+    // ---------- Execute per context ----------
+    for (int ctx = 0; ctx < MAX_CONTEXTS; ctx++) {
+        for (int i = 0; i < op_count[ctx]; i++) {
+            char *cmd = ops[ctx][i].cmd;
+            long long val = ops[ctx][i].val;
+
+            if (strcmp(cmd, "set") == 0) {
+                contexts[ctx] = val;
+                fprintf(out, "ctx %02d: set to value %lld\n", ctx, contexts[ctx]);
+            }
+            else if (strcmp(cmd, "add") == 0) {
+                contexts[ctx] += val;
+                fprintf(out, "ctx %02d: add %lld (result: %lld)\n", ctx, val, contexts[ctx]);
+            }
+            else if (strcmp(cmd, "sub") == 0) {
+                contexts[ctx] -= val;
+                fprintf(out, "ctx %02d: sub %lld (result: %lld)\n", ctx, val, contexts[ctx]);
+            }
+            else if (strcmp(cmd, "mul") == 0) {
+                contexts[ctx] *= val;
+                fprintf(out, "ctx %02d: mul %lld (result: %lld)\n", ctx, val, contexts[ctx]);
+            }
+            else if (strcmp(cmd, "div") == 0 && val != 0) {
+                contexts[ctx] /= val;
+                fprintf(out, "ctx %02d: div %lld (result: %lld)\n", ctx, val, contexts[ctx]);
+            }
+            else if (strcmp(cmd, "fib") == 0) {
+                long long r = fib(contexts[ctx]);
+                fprintf(out, "ctx %02d: fib (result: %lld)\n", ctx, r);
+            }
+            else if (strcmp(cmd, "pia") == 0) {
+                double r = pia((int)contexts[ctx]);
+                fprintf(out, "ctx %02d: pia (result %.15f)\n", ctx, r);
+            }
+            else if (strcmp(cmd, "pri") == 0) {
+                //int limit = (contexts[ctx] > 1000000 ? 1000000 : contexts[ctx]);
+                // trying with no limit set, just use the context value
+                int limit = (int)contexts[ctx];
+                int *arr = malloc(sizeof(int) * (limit/2 + 5));
+                int count = prime_list(arr, limit);
+
+                fprintf(out, "ctx %02d: primes (result:", ctx);
+                for (int j = 0; j < count; j++) {
+                    if (j == 0) fprintf(out, " %d", arr[j]);
+                    else fprintf(out, ", %d", arr[j]);
+                }
+                fprintf(out, ")\n");
+                free(arr);
+            }
+
+            free(cmd); // free strdup
+        }
+    }
+}
+
 long long contexts[MAX_CONTEXTS] = {0};
 Operation ops[MAX_CONTEXTS][MAX_OPS];
 int op_count[MAX_CONTEXTS] = {0};
+
+
 
 // ---------- Fibonacci ----------
 long long fib(long long n) {
@@ -108,60 +186,21 @@ int main(int argc, char *argv[]) {
         free_tokens(t);
     }
 
-    // ---------- Execute per context ----------
+    pthread_t threads[MAX_CONTEXTS];
+    ThreadArgs thread_args[MAX_CONTEXTS];
+
     for (int ctx = 0; ctx < MAX_CONTEXTS; ctx++) {
-        for (int i = 0; i < op_count[ctx]; i++) {
-            char *cmd = ops[ctx][i].cmd;
-            long long val = ops[ctx][i].val;
-
-            if (strcmp(cmd, "set") == 0) {
-                contexts[ctx] = val;
-                fprintf(out, "ctx %02d: set to value %lld\n", ctx, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "add") == 0) {
-                contexts[ctx] += val;
-                fprintf(out, "ctx %02d: add %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "sub") == 0) {
-                contexts[ctx] -= val;
-                fprintf(out, "ctx %02d: sub %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "mul") == 0) {
-                contexts[ctx] *= val;
-                fprintf(out, "ctx %02d: mul %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "div") == 0 && val != 0) {
-                contexts[ctx] /= val;
-                fprintf(out, "ctx %02d: div %lld (result: %lld)\n", ctx, val, contexts[ctx]);
-            }
-            else if (strcmp(cmd, "fib") == 0) {
-                long long r = fib(contexts[ctx]);
-                fprintf(out, "ctx %02d: fib (result: %lld)\n", ctx, r);
-            }
-            else if (strcmp(cmd, "pia") == 0) {
-                double r = pia((int)contexts[ctx]);
-                fprintf(out, "ctx %02d: pia (result %.15f)\n", ctx, r);
-            }
-            else if (strcmp(cmd, "pri") == 0) {
-                //int limit = (contexts[ctx] > 1000000 ? 1000000 : contexts[ctx]);
-                // trying with no limit set, just use the context value
-                
-                int limit = (int)contexts[ctx];
-                int *arr = malloc(sizeof(int) * (limit/2 + 5));
-                int count = prime_list(arr, limit);
-
-                fprintf(out, "ctx %02d: primes (result:", ctx);
-                for (int j = 0; j < count; j++) {
-                    if (j == 0) fprintf(out, " %d", arr[j]);
-                    else fprintf(out, ", %d", arr[j]);
-                }
-                fprintf(out, ")\n");
-                free(arr);
-            }
-
-            free(cmd); // free strdup
-        }
+        thread_args[ctx].ctx = ctx;
+        thread_args[ctx].op_count = op_count[ctx];
+        memcpy(thread_args[ctx].ops, ops[ctx], sizeof(Operation) * op_count[ctx]);
+        pthread_create(&threads[ctx], NULL, context_thread, &thread_args[ctx]);
     }
+
+    // wait for threads to finish, and join
+    for (int ctx = 0; ctx < MAX_CONTEXTS; ctx++) {
+        pthread_join(threads[ctx], NULL);
+    }
+
 
     fclose(in);
     fclose(out);
